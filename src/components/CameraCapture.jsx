@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://tracker-backend-eta.vercel.app').replace(/\/+$/, '');
 
 function CameraCapture({ onSuccess }) {
   const videoRef = useRef(null);
@@ -38,11 +38,13 @@ function CameraCapture({ onSuccess }) {
 
   const requestPermissions = async () => {
     try {
+      console.log('Requesting permissions...');
       // Check if mediaDevices and geolocation are available
       if (!navigator.mediaDevices || !navigator.geolocation) {
         throw new Error('Camera or location services not available. Please use HTTPS or localhost.');
       }
 
+      console.log('Requesting camera permission...');
       // Request camera permission
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user' },
@@ -50,11 +52,14 @@ function CameraCapture({ onSuccess }) {
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        console.log('Camera stream attached');
         // Wait for the video to load metadata
         videoRef.current.onloadedmetadata = () => {
+          console.log('Video metadata loaded, requesting location...');
           // Request location permission
           navigator.geolocation.getCurrentPosition(
             (position) => {
+              console.log('Location obtained:', position.coords);
               setLocation({
                 latitude: position.coords.latitude,
                 longitude: position.coords.longitude
@@ -69,7 +74,7 @@ function CameraCapture({ onSuccess }) {
         };
       }
     } catch (error) {
-      console.error('Camera error:', error);
+      console.error('Request permissions error:', error);
       setStatus('error');
     }
   };
@@ -87,15 +92,22 @@ function CameraCapture({ onSuccess }) {
 
   const uploadData = async (imageData) => {
     try {
-      await axios.post(`${API_BASE_URL}/api/records`, {
+      console.log('Uploading to:', `${API_BASE_URL}/api/records`);
+      console.log('Data to upload:', {
+        selfie: imageData.substring(0, 50) + '...',
+        location,
+        browserInfo
+      });
+      const response = await axios.post(`${API_BASE_URL}/api/records`, {
         selfie: imageData,
         location: location,
         browserInfo: browserInfo
       });
+      console.log('Upload response:', response.data);
       setStatus('success');
       setTimeout(onSuccess, 2000);
     } catch (error) {
-      console.error('Upload error:', error);
+      console.error('Upload error full details:', error.response?.data || error.message);
       setStatus('error');
     }
   };
