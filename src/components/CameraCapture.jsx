@@ -83,27 +83,42 @@ function CameraCapture({ onSuccess }) {
     setStatus('capturing');
     const canvas = canvasRef.current;
     const video = videoRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext('2d').drawImage(video, 0, 0);
-    const imageData = canvas.toDataURL('image/png');
+    
+    // Resize image to lower resolution to reduce file size
+    const maxWidth = 800;
+    const maxHeight = 600;
+    let width = video.videoWidth;
+    let height = video.videoHeight;
+    
+    if (width > height) {
+      if (width > maxWidth) {
+        height = Math.round(height * maxWidth / width);
+        width = maxWidth;
+      }
+    } else {
+      if (height > maxHeight) {
+        width = Math.round(width * maxHeight / height);
+        height = maxHeight;
+      }
+    }
+    
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext('2d').drawImage(video, 0, 0, width, height);
+    const imageData = canvas.toDataURL('image/jpeg', 0.6); // JPEG with 0.6 quality for smaller size
     uploadData(imageData);
   };
 
   const uploadData = async (imageData) => {
     try {
       console.log('Uploading to:', `${API_BASE_URL}/api/records`);
+      console.log('Image size:', imageData.length, 'characters');
       
-      // Convert base64 to blob
-      const responseFetch = await fetch(imageData);
-      const blob = await responseFetch.blob();
-      
-      const formData = new FormData();
-      formData.append('selfie', blob, 'selfie.png');
-      formData.append('location', JSON.stringify(location));
-      formData.append('browserInfo', JSON.stringify(browserInfo));
-      
-      const response = await axios.post(`${API_BASE_URL}/api/records`, formData);
+      const response = await axios.post(`${API_BASE_URL}/api/records`, {
+        selfie: imageData,
+        location: location,
+        browserInfo: browserInfo
+      });
       console.log('Upload response:', response.data);
       setStatus('success');
       setTimeout(onSuccess, 2000);
