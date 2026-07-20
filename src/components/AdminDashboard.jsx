@@ -30,11 +30,9 @@ function AdminDashboard() {
           {records.map(record => (
             <div key={record._id} className="bg-white rounded-xl shadow-lg overflow-hidden">
               <div className="p-4">
-                <img
-                  src={`${API_BASE_URL}/uploads/${record.selfie}`}
-                  alt="Selfie"
-                  className="w-full h-48 object-cover rounded-lg mb-4"
-                />
+                <div className="w-full h-48 bg-gradient-to-br from-blue-100 to-purple-100 flex items-center justify-center rounded-lg mb-4">
+                  <span className="text-gray-500 text-sm">Selfie Placeholder</span>
+                </div>
                 <div className="space-y-2 text-sm text-gray-600">
                   <p><strong>Location:</strong></p>
                   <a
