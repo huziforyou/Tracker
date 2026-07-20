@@ -1,19 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { io } from 'socket.io-client';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 
 function AdminDashboard() {
   const [records, setRecords] = useState([]);
 
   useEffect(() => {
     fetchRecords();
-    const socket = io(API_BASE_URL);
-    socket.on('newRecord', (record) => {
-      setRecords(prev => [record, ...prev]);
-    });
-    return () => socket.disconnect();
+    // Poll for new records every 5 seconds instead of Socket.IO
+    const interval = setInterval(fetchRecords, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const fetchRecords = async () => {

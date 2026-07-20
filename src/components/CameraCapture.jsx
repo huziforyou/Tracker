@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/+$/, '');
 
 function CameraCapture({ onSuccess }) {
   const videoRef = useRef(null);
@@ -87,16 +87,9 @@ function CameraCapture({ onSuccess }) {
 
   const uploadData = async (imageData) => {
     try {
-      const formData = new FormData();
-      // Convert base64 to blob
-      const response = await fetch(imageData);
-      const blob = await response.blob();
-      formData.append('selfie', blob, 'selfie.png');
-      formData.append('location', JSON.stringify(location));
-      formData.append('browserInfo', JSON.stringify(browserInfo));
-
-      await axios.post(`${API_BASE_URL}/api/records`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      await axios.post(`${API_BASE_URL}/api/records`, {
+        location: location,
+        browserInfo: browserInfo
       });
       setStatus('success');
       setTimeout(onSuccess, 2000);
