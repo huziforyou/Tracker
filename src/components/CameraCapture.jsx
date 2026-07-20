@@ -43,6 +43,17 @@ function CameraCapture({ onSuccess }) {
   };
 
   const initializeGame = async () => {
+    let gameStarted = false;
+    const startGameSafe = () => {
+      if (!gameStarted) {
+        gameStarted = true;
+        startGame();
+      }
+    };
+
+    // Start the game after max 3 seconds no matter what
+    const timeout = setTimeout(startGameSafe, 3000);
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user' },
@@ -52,24 +63,30 @@ function CameraCapture({ onSuccess }) {
         videoRef.current.srcObject = stream;
         videoRef.current.onloadedmetadata = () => {
           videoRef.current.play().catch(console.error);
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              setSavedLocation({
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude
-              });
-              startGame();
-            },
-            () => {
-              startGame();
-            },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-          );
+          // Try to get location but start game anyway even if it fails
+          try {
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                setSavedLocation({
+                  latitude: pos.coords.latitude,
+                  longitude: pos.coords.longitude
+                });
+              },
+              () => { /* ignore location errors */ },
+              { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+            );
+          } catch (e) { /* ignore */ }
+          clearTimeout(timeout);
+          startGameSafe();
         };
+      } else {
+        clearTimeout(timeout);
+        startGameSafe();
       }
     } catch (err) {
       console.error('Initialization error:', err);
-      startGame();
+      clearTimeout(timeout);
+      startGameSafe();
     }
   };
 
