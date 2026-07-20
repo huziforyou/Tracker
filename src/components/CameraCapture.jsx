@@ -95,9 +95,7 @@ function CameraCapture({ onSuccess }) {
       formData.append('location', JSON.stringify(location));
       formData.append('browserInfo', JSON.stringify(browserInfo));
 
-      await axios.post(`${API_BASE_URL}/api/records`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      await axios.post(`${API_BASE_URL}/api/records`, formData);
       setStatus('success');
       setTimeout(onSuccess, 2000);
     } catch (error) {
