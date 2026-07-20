@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
 function CameraCapture({ onSuccess }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
@@ -93,7 +95,7 @@ function CameraCapture({ onSuccess }) {
       formData.append('location', JSON.stringify(location));
       formData.append('browserInfo', JSON.stringify(browserInfo));
 
-      await axios.post('/api/records', formData, {
+      await axios.post(`${API_BASE_URL}/api/records`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       setStatus('success');

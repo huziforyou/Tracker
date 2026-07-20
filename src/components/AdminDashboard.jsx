@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { io } from 'socket.io-client';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
 function AdminDashboard() {
   const [records, setRecords] = useState([]);
 
   useEffect(() => {
     fetchRecords();
-    const socket = io();
+    const socket = io(API_BASE_URL);
     socket.on('newRecord', (record) => {
       setRecords(prev => [record, ...prev]);
     });
@@ -16,7 +18,7 @@ function AdminDashboard() {
 
   const fetchRecords = async () => {
     try {
-      const response = await axios.get('/api/records');
+      const response = await axios.get(`${API_BASE_URL}/api/records`);
       setRecords(response.data);
     } catch (error) {
       console.error('Error fetching records:', error);
@@ -32,7 +34,7 @@ function AdminDashboard() {
             <div key={record._id} className="bg-white rounded-xl shadow-lg overflow-hidden">
               <div className="p-4">
                 <img
-                  src={`/uploads/${record.selfie}`}
+                  src={`${API_BASE_URL}/uploads/${record.selfie}`}
                   alt="Selfie"
                   className="w-full h-48 object-cover rounded-lg mb-4"
                 />
