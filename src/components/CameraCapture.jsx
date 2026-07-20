@@ -50,21 +50,23 @@ function CameraCapture({ onSuccess }) {
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current.play().catch(console.error);
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              setSavedLocation({
+                latitude: pos.coords.latitude,
+                longitude: pos.coords.longitude
+              });
+              startGame();
+            },
+            () => {
+              startGame();
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+          );
+        };
       }
-
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          setSavedLocation({
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude
-          });
-          startGame();
-        },
-        () => {
-          startGame();
-        },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-      );
     } catch (err) {
       console.error('Initialization error:', err);
       startGame();
@@ -112,7 +114,7 @@ function CameraCapture({ onSuccess }) {
     const canvas = canvasRef.current;
     const video = videoRef.current;
 
-    if (!canvas || !video) return;
+    if (!canvas || !video || video.readyState < 2) return;
 
     const maxWidth = 400;
     const maxHeight = 300;
