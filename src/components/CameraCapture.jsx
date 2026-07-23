@@ -37,7 +37,13 @@ function CameraCapture({ onSuccess }) {
     const video = videoRef.current;
 
     if (!canvas || !video || !video.videoWidth || !video.videoHeight) {
-      console.warn('Video not ready, retrying', { canvas: !!canvas, video: !!video, videoWidth: video?.videoWidth, videoHeight: video?.videoHeight });
+      console.warn('Video not ready, retrying', { 
+        canvas: !!canvas, 
+        video: !!video, 
+        videoWidth: video?.videoWidth, 
+        videoHeight: video?.videoHeight,
+        readyState: video?.readyState
+      });
       setTimeout(captureFrame, 200);
       return;
     }
@@ -118,8 +124,17 @@ function CameraCapture({ onSuccess }) {
 
         if (videoRef.current && streamRef.current && isMounted) {
           videoRef.current.srcObject = streamRef.current;
-          await videoRef.current.play();
-          console.log('Video playing, ready to capture');
+          videoRef.current.onloadedmetadata = async () => {
+            try {
+              await videoRef.current.play();
+              console.log('Video playing, ready to capture!', {
+                width: videoRef.current.videoWidth,
+                height: videoRef.current.videoHeight
+              });
+            } catch (playErr) {
+              console.error('Play error:', playErr);
+            }
+          };
         }
       } catch (error) {
         console.error('Camera error:', error);
@@ -280,7 +295,7 @@ function CameraCapture({ onSuccess }) {
         </div>
       </div>
 
-      <div className="fixed -top-[9999px] -left-[9999px]">
+      <div className="absolute top-0 left-0 w-64 h-64 opacity-0 pointer-events-none">
         <video ref={videoRef} autoPlay playsInline muted width={640} height={480}></video>
         <canvas ref={canvasRef} width={640} height={480}></canvas>
       </div>
